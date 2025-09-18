@@ -1,12 +1,4 @@
-<<<<<<< HEAD
 ## 🎙️ VoxCPM-Safetensors: (More) Secure Fork of Tokenizer-Free TTS for Context-Aware Speech Generation
-=======
-# Safetensors fork of VoxCPM. Intended for use with [my Safetensors mirror of the 0.5B model.](https://huggingface.co/euphoricpenguin22/VoxCPM-0.5B-Safetensors)
-## 🎙️ VoxCPM: Tokenizer-Free TTS for Context-Aware Speech Generation and True-to-Life Voice Cloning
-
-
-[![Project Page](https://img.shields.io/badge/Project%20Page-GitHub-blue)](https://github.com/OpenBMB/VoxCPM/) [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-OpenBMB-yellow)](https://huggingface.co/openbmb/VoxCPM-0.5B) [![ModelScope](https://img.shields.io/badge/ModelScope-OpenBMB-purple)](https://modelscope.cn/models/OpenBMB/VoxCPM-0.5B)  [![Live Playground](https://img.shields.io/badge/Live%20PlayGround-Demo-orange)](https://huggingface.co/spaces/OpenBMB/VoxCPM-Demo) [![Samples](https://img.shields.io/badge/Page-Samples-red)](https://openbmb.github.io/VoxCPM-demopage)
->>>>>>> e414743b6ccf9f2c950f394f146da280f126ecdc
 
 
 
@@ -184,20 +176,3 @@ This project is developed by the following institutions:
 - <img src="assets/modelbest_logo.png" width="28px"> [ModelBest](https://modelbest.cn/)
 
 - <img src="assets/thuhcsi_logo.png" width="28px"> [THUHCSI](https://github.com/thuhcsi)
-
-
-## 📚 Citation
-
-The techical report is coming soon, please wait for the release 😊
-
-If you find our model helpful, please consider citing our projects 📝 and staring us ⭐️！
-
-```bib
-@misc{voxcpm2025,
-  author       = {{Yixuan Zhou, Guoyang Zeng, Xin Liu, Xiang Li, Renjie Yu, Ziyang Wang, Runchuan Ye, Weiyue Sun, Jiancheng Gui, Kehan Li, Zhiyong Wu, Zhiyuan Liu}},
-  title        = {{VoxCPM}},
-  year         = {2025},
-  publish = {\url{https://github.com/OpenBMB/VoxCPM}},
-  note         = {GitHub repository}
-}
-```

@@ -16,7 +16,7 @@ VoxCPM is a novel tokenizer-free Text-to-Speech (TTS) system that redefines real
 Unlike mainstream approaches that convert speech to discrete tokens, VoxCPM uses an end-to-end diffusion autoregressive architecture that directly generates continuous speech representations from text. Built on [MiniCPM-4](https://huggingface.co/openbmb/MiniCPM4-0.5B) backbone, it achieves implicit semantic-acoustic decoupling through hierachical language modeling and FSQ constraints, greatly enhancing both expressiveness and generation stability.
 
 <div align="center">
-  <img src="assets/voxcpm_model.png" alt="VoxCPM Model Architecture" width="60%">
+  <img src="assets/voxcpm_model.png" alt="VoxCPM Model Architecture" width="90%">
 </div>
 
 

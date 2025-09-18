@@ -1,4 +1,4 @@
-# Safetensors fork of VoxCPM. Intended for use with [my Safetensors fork of the 0.5B model.](https://huggingface.co/euphoricpenguin22/VoxCPM-0.5B-Safetensors)
+# Safetensors fork of VoxCPM. Intended for use with [my Safetensors mirror of the 0.5B model.](https://huggingface.co/euphoricpenguin22/VoxCPM-0.5B-Safetensors)
 ## 🎙️ VoxCPM: Tokenizer-Free TTS for Context-Aware Speech Generation and True-to-Life Voice Cloning
 
 

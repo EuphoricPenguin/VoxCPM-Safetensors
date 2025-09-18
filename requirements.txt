@@ -1,0 +1,31 @@
+# VoxCPM requirements
+# Core dependencies
+torch>=2.5.0
+torchaudio>=2.5.0
+transformers>=4.36.2
+einops
+gradio
+inflect
+addict
+wetext
+datasets
+huggingface-hub
+pydantic
+tqdm
+simplejson
+sortedcontainers
+soundfile
+funasr
+spaces
+
+# Additional dependencies for safetensors support
+safetensors
+whisperx
+onnxruntime
+
+# Required for compatibility
+tensorboard
+protobuf<3.20.0
+
+# Optional for performance (torch.compile) - Windows specific
+triton-windows<3.5

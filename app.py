@@ -4,13 +4,34 @@ import torch
 import gradio as gr  
 import spaces
 from typing import Optional, Tuple
-from funasr import AutoModel
+import whisperx
+import gc
 from pathlib import Path
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-if os.environ.get("HF_REPO_ID", "").strip() == "":
-    os.environ["HF_REPO_ID"] = "openbmb/VoxCPM-0.5B"
+import os
+import sys
+from pathlib import Path
 
-import voxcpm
+# Add the src directory to the Python path so we can import voxcpm without installing it
+src_path = Path(__file__).parent / "src"
+if not src_path.exists():
+    print(f"Error: src directory not found at {src_path}")
+    print("Please make sure you're running from the project root directory")
+    sys.exit(1)
+    
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+# Remove HF_REPO_ID to prevent automatic downloads
+if "HF_REPO_ID" in os.environ:
+    del os.environ["HF_REPO_ID"]
+
+try:
+    import voxcpm
+except ImportError as e:
+    print(f"Error importing voxcpm: {e}")
+    print("Make sure you're running from the project root directory and the src/ folder exists")
+    sys.exit(1)
 
 
 class VoxCPMDemo:
@@ -18,14 +39,11 @@ class VoxCPMDemo:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"🚀 Running on device: {self.device}")
 
-        # ASR model for prompt text recognition
-        self.asr_model_id = "iic/SenseVoiceSmall"
-        self.asr_model: Optional[AutoModel] = AutoModel(
-            model=self.asr_model_id,
-            disable_update=True,
-            log_level='DEBUG',
-            device="cuda:0" if self.device == "cuda" else "cpu",
-        )
+        # ASR model for prompt text recognition - using WhisperX instead of SenseVoiceSmall
+        self.asr_model = None  # Lazy initialization
+        self.asr_model_name = "small"  # Using Whisper small model
+        self.compute_type = "float16" if self.device == "cuda" else "float32"
+        self.batch_size = 16 if self.device == "cuda" else 4
 
         # TTS model (lazy init)
         self.voxcpm_model: Optional[voxcpm.VoxCPM] = None
@@ -35,27 +53,36 @@ class VoxCPMDemo:
     def _resolve_model_dir(self) -> str:
         """
         Resolve model directory:
-        1) Use local checkpoint directory if exists
-        2) If HF_REPO_ID env is set, download into models/{repo}
-        3) Fallback to 'models'
+        1) Use local weights directory if exists
+        2) Use default local model directory if exists
+        3) Otherwise, raise error (no automatic downloads)
         """
+        # First check if we have safetensors in the weights directory
+        weights_dir = "./weights"
+        if os.path.isdir(weights_dir):
+            # Check if we have the required safetensors files
+            required_files = ["model.safetensors", "audiovae.safetensors", "config.json"]
+            has_all_files = all(os.path.exists(os.path.join(weights_dir, f)) for f in required_files)
+            if has_all_files:
+                print(f"Using local safetensors model from: {weights_dir}")
+                return weights_dir
+        
+        # Fall back to default local model directory structure
         if os.path.isdir(self.default_local_model_dir):
-            return self.default_local_model_dir
-
-        repo_id = os.environ.get("HF_REPO_ID", "").strip()
-        if len(repo_id) > 0:
-            target_dir = os.path.join("models", repo_id.replace("/", "__"))
-            if not os.path.isdir(target_dir):
-                try:
-                    from huggingface_hub import snapshot_download  # type: ignore
-                    os.makedirs(target_dir, exist_ok=True)
-                    print(f"Downloading model from HF repo '{repo_id}' to '{target_dir}' ...")
-                    snapshot_download(repo_id=repo_id, local_dir=target_dir, local_dir_use_symlinks=False)
-                except Exception as e:
-                    print(f"Warning: HF download failed: {e}. Falling back to 'data'.")
-                    return "models"
-            return target_dir
-        return "models"
+            # Check if we have the required files in the traditional format
+            required_files = ["pytorch_model.bin", "audiovae.pth", "config.json"]
+            has_all_files = all(os.path.exists(os.path.join(self.default_local_model_dir, f)) for f in required_files)
+            if has_all_files:
+                print(f"Using local pytorch model from: {self.default_local_model_dir}")
+                return self.default_local_model_dir
+        
+        # If we get here, no valid model directory was found
+        raise FileNotFoundError(
+            f"No local model found. Please ensure you have either:\n"
+            f"1. Safetensors files in './weights/' directory: model.safetensors, audiovae.safetensors, config.json\n"
+            f"2. OR PyTorch files in '{self.default_local_model_dir}' directory: pytorch_model.bin, audiovae.pth, config.json\n"
+            f"The app will not automatically download models from HuggingFace."
+        )
 
     def get_or_load_voxcpm(self) -> voxcpm.VoxCPM:
         if self.voxcpm_model is not None:
@@ -67,13 +94,39 @@ class VoxCPMDemo:
         print("Model loaded successfully.")
         return self.voxcpm_model
 
+    def get_or_load_whisperx(self):
+        """Lazy load WhisperX model"""
+        if self.asr_model is None:
+            print(f"Loading WhisperX {self.asr_model_name} model...")
+            self.asr_model = whisperx.load_model(
+                self.asr_model_name, 
+                self.device, 
+                compute_type=self.compute_type
+            )
+            print("WhisperX model loaded successfully.")
+        return self.asr_model
+
     # ---------- Functional endpoints ----------
     def prompt_wav_recognition(self, prompt_wav: Optional[str]) -> str:
         if prompt_wav is None:
             return ""
-        res = self.asr_model.generate(input=prompt_wav, language="auto", use_itn=True)
-        text = res[0]["text"].split('|>')[-1]
-        return text
+        
+        # Load WhisperX model
+        model = self.get_or_load_whisperx()
+        
+        # Load and transcribe audio
+        audio = whisperx.load_audio(prompt_wav)
+        result = model.transcribe(audio, batch_size=self.batch_size)
+        
+        # Extract text from segments
+        text = " ".join([segment["text"] for segment in result["segments"]])
+        
+        # Clean up GPU memory
+        if self.device == "cuda":
+            gc.collect()
+            torch.cuda.empty_cache()
+        
+        return text.strip()
 
     def generate_tts_audio(
         self,

@@ -2,13 +2,13 @@ import torch
 import torchaudio
 import os
 import tempfile
-from huggingface_hub import snapshot_download
+# Removed snapshot_download import since we're disabling automatic downloads
 from .model.voxcpm import VoxCPMModel
 
 class VoxCPM:
     def __init__(self,
             voxcpm_model_path : str,
-            zipenhancer_model_path : str = "iic/speech_zipenhancer_ans_multiloss_16k_base",
+            zipenhancer_model_path : str = "./models/zipenhancer_onnx",
             enable_denoiser : bool = True,
         ):
         """Initialize VoxCPM TTS pipeline.
@@ -17,16 +17,22 @@ class VoxCPM:
             voxcpm_model_path: Local filesystem path to the VoxCPM model assets
                 (weights, configs, etc.). Typically the directory returned by
                 a prior download step.
-            zipenhancer_model_path: ModelScope acoustic noise suppression model
-                id or local path. If None, denoiser will not be initialized.
+            zipenhancer_model_path: Local path to ONNX model directory for ZipEnhancer.
+                If None, denoiser will not be initialized.
             enable_denoiser: Whether to initialize the denoiser pipeline.
         """
         print(f"voxcpm_model_path: {voxcpm_model_path}, zipenhancer_model_path: {zipenhancer_model_path}, enable_denoiser: {enable_denoiser}")
         self.tts_model = VoxCPMModel.from_local(voxcpm_model_path)
         self.text_normalizer = None
         if enable_denoiser and zipenhancer_model_path is not None:
-            from .zipenhancer import ZipEnhancer
-            self.denoiser = ZipEnhancer(zipenhancer_model_path)
+            try:
+                from .zipenhancer import ZipEnhancer
+                self.denoiser = ZipEnhancer(zipenhancer_model_path)
+                print("ZipEnhancer denoiser initialized successfully")
+            except Exception as e:
+                print(f"Warning: Failed to initialize ZipEnhancer denoiser: {e}")
+                print("Audio denoising will be disabled")
+                self.denoiser = None
         else:
             self.denoiser = None
         print("Warm up VoxCPMModel...")
@@ -37,49 +43,82 @@ class VoxCPM:
 
     @classmethod
     def from_pretrained(cls,
-            hf_model_id: str = "openbmb/VoxCPM-0.5B",
+            hf_model_id: str = None,
             load_denoiser: bool = True,
-            zipenhancer_model_id: str = "iic/speech_zipenhancer_ans_multiloss_16k_base",
+            zipenhancer_model_path: str = "./models/zipenhancer_onnx",
             cache_dir: str = None,
-            local_files_only: bool = False,
+            local_files_only: bool = True,  # Changed to True by default to prevent downloads
         ):
-        """Instantiate ``VoxCPM`` from a Hugging Face Hub snapshot.
+        """Instantiate ``VoxCPM`` from a local model directory.
 
         Args:
-            hf_model_id: Explicit Hugging Face repository id (e.g. "org/repo") or local path.
+            hf_model_id: Local filesystem path to the model directory.
             load_denoiser: Whether to initialize the denoiser pipeline.
             zipenhancer_model_id: Denoiser model id or path for ModelScope
                 acoustic noise suppression.
-            cache_dir: Custom cache directory for the snapshot.
+            cache_dir: Custom cache directory (not used for local models).
             local_files_only: If True, only use local files and do not attempt
                 to download.
 
         Returns:
             VoxCPM: Initialized instance whose ``voxcpm_model_path`` points to
-            the downloaded snapshot directory.
+            the local model directory.
 
         Raises:
-            ValueError: If neither a valid ``hf_model_id`` nor a resolvable
-                ``hf_model_id`` is provided.
+            ValueError: If no valid local model directory is provided.
+            FileNotFoundError: If the local model directory doesn't contain required files.
         """
-        repo_id = hf_model_id
-        if not repo_id:
-            raise ValueError("You must provide hf_model_id")
+        if not hf_model_id:
+            # Try to auto-detect local model directories
+            possible_paths = [
+                "./weights",  # Safetensors directory
+                "./models/VoxCPM-0.5B",  # Default local directory
+                "./models",  # Fallback
+            ]
+            
+            for path in possible_paths:
+                if os.path.isdir(path):
+                    # Check if this directory contains model files
+                    safetensors_files = ["model.safetensors", "audiovae.safetensors", "config.json"]
+                    pytorch_files = ["pytorch_model.bin", "audiovae.pth", "config.json"]
+                    
+                    has_safetensors = all(os.path.exists(os.path.join(path, f)) for f in safetensors_files)
+                    has_pytorch = all(os.path.exists(os.path.join(path, f)) for f in pytorch_files)
+                    
+                    if has_safetensors or has_pytorch:
+                        hf_model_id = path
+                        print(f"Auto-detected model directory: {path}")
+                        break
+            
+            if not hf_model_id:
+                raise ValueError(
+                    "No model directory provided and no local model found. "
+                    "Please specify a local model directory or place model files in ./weights/ or ./models/VoxCPM-0.5B/"
+                )
         
-        # Load from local path if provided
-        if os.path.isdir(repo_id):
-            local_path = repo_id
-        else:
-            # Otherwise, try from_pretrained (Hub); exit on failure
-            local_path = snapshot_download(
-                repo_id=repo_id,
-                cache_dir=cache_dir,
-                local_files_only=local_files_only,
+        # Only allow local paths - no automatic downloads
+        if not os.path.isdir(hf_model_id):
+            raise FileNotFoundError(
+                f"Model directory '{hf_model_id}' not found. "
+                "This app only supports local models. Please provide a valid local directory path."
             )
-
+        
+        # Validate that the directory contains required files
+        safetensors_files = ["model.safetensors", "audiovae.safetensors", "config.json"]
+        pytorch_files = ["pytorch_model.bin", "audiovae.pth", "config.json"]
+        
+        has_safetensors = all(os.path.exists(os.path.join(hf_model_id, f)) for f in safetensors_files)
+        has_pytorch = all(os.path.exists(os.path.join(hf_model_id, f)) for f in pytorch_files)
+        
+        if not (has_safetensors or has_pytorch):
+            raise FileNotFoundError(
+                f"Model directory '{hf_model_id}' is missing required files. "
+                f"Expected either safetensors files: {safetensors_files} OR pytorch files: {pytorch_files}"
+            )
+        
         return cls(
-            voxcpm_model_path=local_path,
-            zipenhancer_model_path=zipenhancer_model_id if load_denoiser else None,
+            voxcpm_model_path=hf_model_id,
+            zipenhancer_model_path=zipenhancer_model_path if load_denoiser else None,
             enable_denoiser=load_denoiser,
         )
 
@@ -128,10 +167,14 @@ class VoxCPM:
         try:
             if prompt_wav_path is not None and prompt_text is not None:
                 if denoise and self.denoiser is not None:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
-                        temp_prompt_wav_path = tmp_file.name
-                    self.denoiser.enhance(prompt_wav_path, output_path=temp_prompt_wav_path)
-                    prompt_wav_path = temp_prompt_wav_path
+                    try:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
+                            temp_prompt_wav_path = tmp_file.name
+                        self.denoiser.enhance(prompt_wav_path, output_path=temp_prompt_wav_path)
+                        prompt_wav_path = temp_prompt_wav_path
+                    except Exception as e:
+                        print(f"Warning: Audio denoising failed: {e}. Using original audio.")
+                        # Continue with the original prompt_wav_path
                 fixed_prompt_cache = self.tts_model.build_prompt_cache(
                     prompt_wav_path=prompt_wav_path,
                     prompt_text=prompt_text

@@ -28,6 +28,12 @@ from einops import rearrange
 from pydantic import BaseModel
 from tqdm import tqdm
 from transformers import LlamaTokenizerFast
+try:
+    from safetensors import safe_open
+    from safetensors.torch import load_file as load_safetensors
+except ImportError:
+    safe_open = None
+    load_safetensors = None
 
 from ..modules.audiovae import AudioVAE
 from ..modules.layers import ScalarQuantizationLayer
@@ -145,22 +151,54 @@ class VoxCPMModel(nn.Module):
         self.audio_vae = audio_vae
         self.chunk_size = audio_vae.chunk_size
         self.sample_rate = audio_vae.sample_rate
+        
+        # Initialize step functions - we'll use a lambda to avoid state_dict issues
+        # The actual assignment will happen in optimize()
 
     
     def optimize(self):
         try:
             if self.device != "cuda":
                 raise ValueError("VoxCPMModel can only be optimized on CUDA device")
-            self.base_lm.forward_step = torch.compile(self.base_lm.forward_step, mode="reduce-overhead", fullgraph=True)
-            self.residual_lm.forward_step = torch.compile(self.residual_lm.forward_step, mode="reduce-overhead", fullgraph=True)
-            self.feat_encoder_step = torch.compile(self.feat_encoder, mode="reduce-overhead", fullgraph=True)
-            self.feat_decoder.estimator = torch.compile(self.feat_decoder.estimator, mode="reduce-overhead", fullgraph=True)
-        except:
+            
+            # Check if we're on Windows - Triton has known issues on Windows
+            import platform
+            if platform.system() == "Windows":
+                print("Windows detected: Skipping torch.compile optimization due to Triton compatibility issues")
+                print("Using original functions (Triton not stable on Windows)")
+                # On Windows, we just use the original functions without compilation
+                self.feat_encoder_step = self.feat_encoder
+                return self
+            
+            # Check if torch.compile is available (requires Triton)
+            try:
+                # Store original functions for fallback
+                original_base_forward_step = self.base_lm.forward_step
+                original_residual_forward_step = self.residual_lm.forward_step
+                original_feat_encoder = self.feat_encoder
+                original_estimator = self.feat_decoder.estimator
+                
+                # Try to compile the functions
+                self.base_lm.forward_step = torch.compile(original_base_forward_step, mode="reduce-overhead", fullgraph=True)
+                self.residual_lm.forward_step = torch.compile(original_residual_forward_step, mode="reduce-overhead", fullgraph=True)
+                self.feat_encoder_step = torch.compile(original_feat_encoder, mode="reduce-overhead", fullgraph=True)
+                self.feat_decoder.estimator = torch.compile(original_estimator, mode="reduce-overhead", fullgraph=True)
+                print("VoxCPMModel optimized with torch.compile")
+            except Exception as compile_error:
+                print(f"torch.compile optimization failed: {compile_error}")
+                print("Falling back to original functions (Triton may not be installed)")
+                # Restore original functions if compilation fails
+                self.base_lm.forward_step = original_base_forward_step
+                self.residual_lm.forward_step = original_residual_forward_step
+                self.feat_encoder_step = original_feat_encoder
+                self.feat_decoder.estimator = original_estimator
+                raise
+                
+        except Exception:
             print("VoxCPMModel can not be optimized by torch.compile, using original forward_step functions")
-            self.base_lm.forward_step = self.base_lm.forward_step
-            self.residual_lm.forward_step = self.residual_lm.forward_step
-            self.feat_encoder_step = self.feat_encoder
-            self.feat_decoder.estimator = self.feat_decoder.estimator
+            # Ensure we have the original functions
+            if not hasattr(self, 'feat_encoder_step'):
+                self.feat_encoder_step = self.feat_encoder
         return self
 
 
@@ -585,24 +623,51 @@ class VoxCPMModel(nn.Module):
         tokenizer = LlamaTokenizerFast.from_pretrained(path)
 
         audio_vae = AudioVAE()
-        vae_state_dict = torch.load(
-            os.path.join(path, "audiovae.pth"),
-            map_location="cpu",
-            weights_only=True,
-        )["state_dict"]
+        
+        # Check for safetensors files first, fall back to pytorch format
+        model_safetensors_path = os.path.join(path, "model.safetensors")
+        vae_safetensors_path = os.path.join(path, "audiovae.safetensors")
+        model_pytorch_path = os.path.join(path, "pytorch_model.bin")
+        vae_pytorch_path = os.path.join(path, "audiovae.pth")
+        
+        use_safetensors = False
+        if os.path.exists(model_safetensors_path) and os.path.exists(vae_safetensors_path):
+            if load_safetensors is None:
+                raise ImportError("safetensors package is required to load .safetensors files. Please install with: pip install safetensors")
+            use_safetensors = True
+            print("Loading model from .safetensors files")
+        elif os.path.exists(model_pytorch_path) and os.path.exists(vae_pytorch_path):
+            print("Loading model from .pth/.bin files")
+        else:
+            raise FileNotFoundError(f"Could not find model files in {path}. Expected either .safetensors or .pth/.bin files.")
+
+        if use_safetensors:
+            # Load VAE from safetensors
+            vae_state_dict = load_safetensors(vae_safetensors_path)
+            # Load main model from safetensors
+            model_state_dict = load_safetensors(model_safetensors_path)
+        else:
+            # Load VAE from pytorch format
+            vae_state_dict = torch.load(
+                vae_pytorch_path,
+                map_location="cpu",
+                weights_only=True,
+            )["state_dict"]
+            # Load main model from pytorch format
+            model_state_dict = torch.load(
+                model_pytorch_path,
+                map_location="cpu",
+                weights_only=True,
+            )["state_dict"]
 
         model = cls(config, tokenizer, audio_vae)
         lm_dtype = get_dtype(config.dtype)
         model = model.to(lm_dtype)
         model.audio_vae = model.audio_vae.to(torch.float32)
 
-        model_state_dict = torch.load(
-            os.path.join(path, "pytorch_model.bin"),
-            map_location="cpu",
-            weights_only=True,
-        )["state_dict"]
-
+        # Merge VAE state dict into main model state dict
         for kw, val in vae_state_dict.items():
             model_state_dict[f"audio_vae.{kw}"] = val
+        
         model.load_state_dict(model_state_dict, strict=True)
         return model.to(model.device).eval().optimize()

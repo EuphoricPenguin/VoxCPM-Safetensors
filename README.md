@@ -1,7 +1,12 @@
+<<<<<<< HEAD
+## 🎙️ VoxCPM-Safetensors: (More) Secure Fork of Tokenizer-Free TTS for Context-Aware Speech Generation
+=======
+# Safetensors fork of VoxCPM. Intended for use with [my Safetensors mirror of the 0.5B model.](https://huggingface.co/euphoricpenguin22/VoxCPM-0.5B-Safetensors)
 ## 🎙️ VoxCPM: Tokenizer-Free TTS for Context-Aware Speech Generation and True-to-Life Voice Cloning
 
 
 [![Project Page](https://img.shields.io/badge/Project%20Page-GitHub-blue)](https://github.com/OpenBMB/VoxCPM/) [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-OpenBMB-yellow)](https://huggingface.co/openbmb/VoxCPM-0.5B) [![ModelScope](https://img.shields.io/badge/ModelScope-OpenBMB-purple)](https://modelscope.cn/models/OpenBMB/VoxCPM-0.5B)  [![Live Playground](https://img.shields.io/badge/Live%20PlayGround-Demo-orange)](https://huggingface.co/spaces/OpenBMB/VoxCPM-Demo) [![Samples](https://img.shields.io/badge/Page-Samples-red)](https://openbmb.github.io/VoxCPM-demopage)
+>>>>>>> e414743b6ccf9f2c950f394f146da280f126ecdc
 
 
 
@@ -9,17 +14,10 @@
   <img src="assets/voxcpm_logo.png" alt="VoxCPM Logo" width="40%">
 </div>
 
-<div align="center">
-
-👋 Contact us on [WeChat](assets/wechat.png)
-
-</div>
-
-## News 
-* [2025.09.16] 🔥 🔥 🔥  We Open Source the VoxCPM-0.5B [weights](https://huggingface.co/openbmb/VoxCPM-0.5B)!
-* [2025.09.16] 🎉 🎉 🎉  We Provide the [Gradio PlayGround](https://huggingface.co/spaces/OpenBMB/VoxCPM-Demo) for VoxCPM-0.5B, try it now! 
 
 ## Overview
+
+A fork focused on using model weights that are freely-licensed and reduce the risk of arbitrary code execution. The main weights [were converted to Safetensors](https://huggingface.co/euphoricpenguin22/VoxCPM-0.5B-Safetensors). SenseVoice was replaced with WhisperX Small to maintain free licensing. The ZipEnhancer model is now forcibly imported as ONNX, which offers similar security benefits to Safetensors. Triton was replaced with [triton-windows](https://github.com/woct0rdho/triton-windows) to get it running, although torch.compile might still need fixed. To be clear, I am not a security expert, but just a guy who was bugged with the prevelant usage of the [pickle](https://huggingface.co/docs/hub/en/security-pickle) format. WhisperX might still use pickle, but I consider it to be a more established and trusted model source than SenseVoice. This fork was created using Void Agent and DeepSeek. 
 
 VoxCPM is a novel tokenizer-free Text-to-Speech (TTS) system that redefines realism in speech synthesis. By modeling speech in a continuous space, it overcomes the limitations of discrete tokenization and enables two flagship capabilities: context-aware speech generation and true-to-life zero-shot voice cloning.
 
@@ -37,117 +35,17 @@ Unlike mainstream approaches that convert speech to discrete tokens, VoxCPM uses
 
 
 
-###  📝  TODO List
-🎉  Please stay tuned for updates!
-
- - <label>
-    <input type="checkbox" disabled>
-    <span>Release technical report</span>
-  </label>
-
- - <label>
-    <input type="checkbox" disabled>
-    <span>Support higher sampling rate</span>
-  </label>
-
-
-
-
-
-
-
-
-
 
 
 ##  Quick Start
 
-### 🔧 Install from PyPI
-``` sh
-pip install voxcpm
-```
-### 1.  Model Download (Optional)
-By default, when you first run the script, the model will be downloaded automatically, but you can also download the model in advance.
-- Download VoxCPM-0.5B
-    ```
-    from huggingface_hub import snapshot_download
-    snapshot_download("openbmb/VoxCPM-0.5B",local_files_only=local_files_only)
-    ```
-- Download ZipEnhancer and SenseVoice-Small. We use ZipEnhancer to enhance speech prompts and SenseVoice-Small for speech prompt ASR in the web demo.
-    ```
-    from modelscope import snapshot_download
-    snapshot_download('iic/speech_zipenhancer_ans_multiloss_16k_base')
-    snapshot_download('iic/SenseVoiceSmall')
-    ```
+### 1. Installation
 
-### 2. Basic Usage
-```python
-import soundfile as sf
-from voxcpm import VoxCPM
+`pip install -r requirements.txt`
 
-model = VoxCPM.from_pretrained("openbmb/VoxCPM-0.5B")
+`python download_models.py`
 
-wav = model.generate(
-    text="VoxCPM is an innovative end-to-end TTS model from ModelBest, designed to generate highly expressive speech.",
-    prompt_wav_path=None,      # optional: path to a prompt speech for voice cloning
-    prompt_text=None,          # optional: reference text
-    cfg_value=2.0,             # LM guidance on LocDiT, higher for better adherence to the prompt, but maybe worse
-    inference_timesteps=10,   # LocDiT inference timesteps, higher for better result, lower for fast speed
-    normalize=True,           # enable external TN tool
-    denoise=True,             # enable external Denoise tool
-    retry_badcase=True,        # enable retrying mode for some bad cases (unstoppable)
-    retry_badcase_max_times=3,  # maximum retrying times
-    retry_badcase_ratio_threshold=6.0, # maximum length restriction for bad case detection (simple but effective), it could be adjusted for slow pace speech
-)
-
-sf.write("output.wav", wav, 16000)
-print("saved: output.wav")
-```
-
-### 3. CLI Usage
-
-After installation, the entry point is `voxcpm` (or use `python -m voxcpm.cli`).
-
-```bash
-# 1) Direct synthesis (single text)
-voxcpm --text "VoxCPM is an innovative end-to-end TTS model from ModelBest, designed to generate highly expressive speech." --output out.wav
-
-# 2) Voice cloning (reference audio + transcript)
-voxcpm --text "VoxCPM is an innovative end-to-end TTS model from ModelBest, designed to generate highly expressive speech." \
-  --prompt-audio path/to/voice.wav \
-  --prompt-text "reference transcript" \
-  --output out.wav \
-  --denoise
-
-# 3) Batch processing (one text per line)
-voxcpm --input examples/input.txt --output-dir outs
-# (optional) Batch + cloning
-voxcpm --input examples/input.txt --output-dir outs \
-  --prompt-audio path/to/voice.wav \
-  --prompt-text "reference transcript" \
-  --denoise
-
-# 4) Inference parameters (quality/speed)
-voxcpm --text "..." --output out.wav \
-  --cfg-value 2.0 --inference-timesteps 10 --normalize
-
-# 5) Model loading
-# Prefer local path
-voxcpm --text "..." --output out.wav --model-path /path/to/VoxCPM_model_dir
-# Or from Hugging Face (auto download/cache)
-voxcpm --text "..." --output out.wav \
-  --hf-model-id openbmb/VoxCPM-0.5B --cache-dir ~/.cache/huggingface --local-files-only
-
-# 6) Denoiser control
-voxcpm --text "..." --output out.wav \
-  --no-denoiser --zipenhancer-path iic/speech_zipenhancer_ans_multiloss_16k_base
-
-# 7) Help
-voxcpm --help
-python -m voxcpm.cli --help
-```
-
-### 4. Start web demo
+### 2. Start web demo
 
 You can start the UI interface by running `python app.py`, which allows you to perform Voice Cloning and Voice Creation.
 
@@ -261,6 +159,13 @@ VoxCPM achieves competitive results on public zero-shot TTS benchmarks:
 
 
 
+## 📝TO-DO List
+Please stay tuned for updates!
+- [ ] Release the VoxCPM technical report.
+- [ ] Support higher sampling rate (next version).
+
+
+
 ## 📄 License
 The VoxCPM model weights and code are open-sourced under the [Apache-2.0](LICENSE) license.
 
@@ -279,8 +184,6 @@ This project is developed by the following institutions:
 - <img src="assets/modelbest_logo.png" width="28px"> [ModelBest](https://modelbest.cn/)
 
 - <img src="assets/thuhcsi_logo.png" width="28px"> [THUHCSI](https://github.com/thuhcsi)
-
-
 
 
 ## 📚 Citation

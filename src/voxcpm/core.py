@@ -1,6 +1,7 @@
 import torch
 import torchaudio
 import os
+import re
 import tempfile
 # Removed snapshot_download import since we're disabling automatic downloads
 from .model.voxcpm import VoxCPMModel
@@ -159,10 +160,19 @@ class VoxCPM:
         Returns:
             numpy.ndarray: 1D waveform array (float32) on CPU.
         """
-        texts = text.split("\n")
-        texts = [t.strip() for t in texts if t.strip()]
-        final_wav = []
-        temp_prompt_wav_path = None 
+        if not text.strip() or not isinstance(text, str):
+            raise ValueError("target text must be a non-empty string")
+        
+        if prompt_wav_path is not None:
+            if not os.path.exists(prompt_wav_path):
+                raise FileNotFoundError(f"prompt_wav_path does not exist: {prompt_wav_path}")
+        
+        if (prompt_wav_path is None) != (prompt_text is None):
+            raise ValueError("prompt_wav_path and prompt_text must both be provided or both be None")
+        
+        text = text.replace("\n", " ")
+        text = re.sub(r'\s+', ' ', text)
+        temp_prompt_wav_path = None
         
         try:
             if prompt_wav_path is not None and prompt_text is not None:
@@ -182,35 +192,25 @@ class VoxCPM:
             else:
                 fixed_prompt_cache = None  # will be built from the first inference
             
-            for sub_text in texts:
-                if sub_text.strip() == "":
-                    continue
-                print("sub_text:", sub_text)
-                if normalize:
-                    if self.text_normalizer is None:
-                        from .utils.text_normalize import TextNormalizer
-                        self.text_normalizer = TextNormalizer()
-                    sub_text = self.text_normalizer.normalize(sub_text)
-                wav, target_text_token, generated_audio_feat = self.tts_model.generate_with_prompt_cache(
-                                target_text=sub_text,
-                                prompt_cache=fixed_prompt_cache,
-                                min_len=2,
-                                max_len=max_length,
-                                inference_timesteps=inference_timesteps,
-                                cfg_value=cfg_value,
-                                retry_badcase=retry_badcase,
-                                retry_badcase_max_times=retry_badcase_max_times,
-                                retry_badcase_ratio_threshold=retry_badcase_ratio_threshold,
-                            )
-                if fixed_prompt_cache is None:
-                    fixed_prompt_cache = self.tts_model.merge_prompt_cache(
-                        original_cache=None,
-                        new_text_token=target_text_token,
-                        new_audio_feat=generated_audio_feat
-                    )
-                final_wav.append(wav)
+            if normalize:
+                if self.text_normalizer is None:
+                    from .utils.text_normalize import TextNormalizer
+                    self.text_normalizer = TextNormalizer()
+                text = self.text_normalizer.normalize(text)
+            
+            wav, target_text_token, generated_audio_feat = self.tts_model.generate_with_prompt_cache(
+                            target_text=text,
+                            prompt_cache=fixed_prompt_cache,
+                            min_len=2,
+                            max_len=max_length,
+                            inference_timesteps=inference_timesteps,
+                            cfg_value=cfg_value,
+                            retry_badcase=retry_badcase,
+                            retry_badcase_max_times=retry_badcase_max_times,
+                            retry_badcase_ratio_threshold=retry_badcase_ratio_threshold,
+                        )
         
-            return torch.cat(final_wav, dim=1).squeeze(0).cpu().numpy()
+            return wav.squeeze(0).cpu().numpy()
         
         finally:
             if temp_prompt_wav_path and os.path.exists(temp_prompt_wav_path):

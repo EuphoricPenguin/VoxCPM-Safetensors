@@ -247,10 +247,6 @@ def create_demo_interface(demo: VoxCPMDemo):
               **调低**：合成速度更快。
             - **Higher** for better synthesis quality.  
               **调高**：合成质量更佳。
-
-            ### Long Text (e.g., >5 min speech)｜长文本 (如 >5分钟的合成语音)
-            While VoxCPM can handle long texts directly, we recommend using empty lines to break very long content into paragraphs; the model will then synthesize each paragraph individually.  
-            虽然 VoxCPM 支持直接生成长文本，但如果目标文本过长，我们建议使用换行符将内容分段；模型将对每个段落分别合成。
             """)
 
         # Main controls
@@ -259,7 +255,7 @@ def create_demo_interface(demo: VoxCPMDemo):
                 prompt_wav = gr.Audio(
                     sources=["upload", 'microphone'],
                     type="filepath",
-                    label="Prompt Speech",
+                    label="Prompt Speech (Optional, or let VoxCPM improvise)",
                     value="./examples/example.wav",
                 )
                 DoDenoisePromptAudio = gr.Checkbox(
@@ -297,14 +293,13 @@ def create_demo_interface(demo: VoxCPMDemo):
                     text = gr.Textbox(
                         value="VoxCPM is an innovative end-to-end TTS model from ModelBest, designed to generate highly realistic speech.",
                         label="Target Text",
-                        info="Default processing splits text on \\n into paragraphs; each is synthesized as a chunk and then concatenated into the final audio."
                     )
                 with gr.Row():
                     DoNormalizeText = gr.Checkbox(
                         value=False,
                         label="Text Normalization",
                         elem_id="chk_normalize",
-                        info="We use WeTextPorcessing library to normalize the input text."
+                        info="We use wetext library to normalize the input text."
                     )
                 audio_output = gr.Audio(label="Output Audio")
 

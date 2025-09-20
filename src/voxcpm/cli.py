@@ -240,6 +240,7 @@ Examples:
     # Prompt audio (for voice cloning)
     parser.add_argument("--prompt-audio", "-pa", help="Reference audio file path")
     parser.add_argument("--prompt-text", "-pt", help="Reference text corresponding to the audio")
+    parser.add_argument("--prompt-file", "-pf", help="Reference text file corresponding to the audio")
     parser.add_argument("--denoise", action="store_true", help="Enable prompt speech enhancement (denoising)")
 
     # Generation parameters
@@ -279,6 +280,12 @@ def main():
 
     # If prompt audio+text provided → voice cloning
     if args.prompt_audio or args.prompt_text:
+        if not args.prompt_text and args.prompt_file:
+            assert os.path.isfile(args.prompt_file), "Prompt file does not exist or is not accessible."
+        
+            with open(args.prompt_file, 'r', encoding='utf-8') as f:
+                args.prompt_text = f.read()
+
         if not args.prompt_audio or not args.prompt_text:
             print("Error: Voice cloning requires both --prompt-audio and --prompt-text")
             sys.exit(1)

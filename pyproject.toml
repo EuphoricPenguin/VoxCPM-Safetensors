@@ -36,7 +36,7 @@ dependencies = [
     "addict",
     "wetext",
     "modelscope>=1.22.0",
-    "datasets>=2,<4",
+    "datasets>=3,<4",
     "huggingface-hub",
     "pydantic",
     "tqdm",
